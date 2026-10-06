@@ -3,7 +3,7 @@
 A building management console: floor plans with live device status, alert
 handling, and plant telemetry across a two-building estate.
 
-**Live: https://estate-ops.netlify.app**
+**Live: https://ashish-ops-console.netlify.app**
 
 Built with **Angular, standalone components and signals** — no NgModules, no
 `zone.js` patterns, no RxJS where a computed signal does the job.
