@@ -1,0 +1,215 @@
+<div class="min-h-dvh">
+  <p class="bg-ink px-4 py-1.5 text-center text-xs text-page/80">
+    Demonstration build. Two fictional buildings, invented telemetry. Nothing here is connected to real plant.
+  </p>
+
+  <header class="border-b border-line bg-panel">
+    <div class="mx-auto flex max-w-[86rem] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 sm:px-6">
+      <h1 class="text-base font-semibold text-ink">Estate operations</h1>
+      <p class="text-sm text-mute">{{ floor().name }}</p>
+      <div class="ml-auto flex items-center gap-4 text-sm">
+        @if (openAlerts() > 0) {
+          <span class="flex items-center gap-2 text-fault">
+            <app-status-dot status="fault" />
+            {{ openAlerts() }} open alert{{ openAlerts() > 1 ? 's' : '' }}
+          </span>
+        } @else {
+          <span class="flex items-center gap-2 text-ok"><app-status-dot status="ok" /> No open alerts</span>
+        }
+      </div>
+    </div>
+  </header>
+
+  <div class="mx-auto max-w-[86rem] gap-6 px-4 py-6 sm:px-6 lg:grid lg:grid-cols-[13rem_1fr_19rem]">
+
+    <!-- estate tree -->
+    <nav class="mb-6 lg:mb-0" aria-label="Estate">
+      @for (b of buildings; track b.id) {
+        <div class="mb-5">
+          <h2 class="text-sm font-semibold text-ink">{{ b.name }}</h2>
+          <p class="text-xs text-mute">{{ b.address }}</p>
+          <ul class="mt-2">
+            @for (f of floorsOf(b.id); track f.id) {
+              <li>
+                <button type="button" (click)="pick(f.id)"
+                        class="flex w-full items-center justify-between gap-2 border-l-2 py-1.5 pl-3 pr-2 text-left text-sm transition-colors"
+                        [class.border-ink]="floorId() === f.id"
+                        [class.text-ink]="floorId() === f.id"
+                        [class.border-line]="floorId() !== f.id"
+                        [class.text-body]="floorId() !== f.id"
+                        [class.hover:text-ink]="floorId() !== f.id">
+                  <span>{{ f.name.split('· ')[1] }}</span>
+                  <span class="font-mono text-xs text-mute">{{ f.occupancy }}</span>
+                </button>
+              </li>
+            }
+          </ul>
+        </div>
+      }
+    </nav>
+
+    <!-- plan + devices -->
+    <main>
+      <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <app-tile label="Occupancy" [value]="floor().occupancy" [unit]="'of ' + floor().capacity"
+                  [note]="occupancyPct() + '% of capacity'" />
+        <app-tile label="Demand now" [value]="demandNow()" unit="kW" />
+        <app-tile label="Devices" [value]="devices().length"
+                  [note]="counts().fault + ' in fault'" [tone]="counts().fault ? 'fault' : 'neutral'" />
+        <app-tile label="Floor area" [value]="floor().area" unit="m²" />
+      </div>
+
+      <div class="mt-6">
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold text-ink">Plan</h2>
+          <div class="flex flex-wrap items-center gap-3 text-xs">
+            @for (s of ['ok','warning','fault','offline']; track s) {
+              <button type="button" (click)="statusFilter.set(statusFilter() === s ? 'all' : $any(s))"
+                      class="flex items-center gap-1.5 border px-2 py-1 transition-colors"
+                      [class.border-ink]="statusFilter() === s"
+                      [class.border-line]="statusFilter() !== s">
+                <app-status-dot [status]="$any(s)" />
+                {{ statusLabel($any(s)) }}
+                <span class="font-mono text-mute">{{ $any(counts())[s === 'ok' ? 'ok' : s] }}</span>
+              </button>
+            }
+          </div>
+        </div>
+        <app-plan [floor]="floor()" [selectedId]="selected()?.id ?? null" (select)="selected.set($event)" />
+        <p class="mt-2 text-xs text-mute">Select a device on the plan, or from the schedule below.</p>
+      </div>
+
+      <div class="mt-7">
+        <h2 class="mb-2 text-sm font-semibold text-ink">
+          Device schedule
+          @if (statusFilter() !== 'all') {
+            <button type="button" (click)="statusFilter.set('all')"
+                    class="ml-2 text-xs font-normal text-body underline underline-offset-4 hover:text-ink">
+              showing {{ statusLabel($any(statusFilter())) }} only — show all
+            </button>
+          }
+        </h2>
+        <div class="overflow-x-auto border border-line bg-panel">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-line text-left text-xs text-mute">
+                <th class="px-3 py-2 font-medium">Device</th>
+                <th class="px-3 py-2 font-medium">Type</th>
+                <th class="px-3 py-2 text-right font-medium">Reading</th>
+                <th class="px-3 py-2 text-right font-medium">Δ setpoint</th>
+                <th class="px-3 py-2 text-right font-medium">Last seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (d of visibleDevices(); track d.id) {
+                <tr (click)="selected.set(d)"
+                    class="cursor-pointer border-b border-line last:border-0 hover:bg-page"
+                    [class.bg-page]="selected()?.id === d.id">
+                  <td class="px-3 py-2">
+                    <span class="flex items-center gap-2">
+                      <app-status-dot [status]="d.status" />
+                      <span class="text-ink">{{ d.label }}</span>
+                    </span>
+                  </td>
+                  <td class="px-3 py-2 text-mute">{{ kindLabel[d.kind] }}</td>
+                  <td class="px-3 py-2 text-right font-mono text-ink">
+                    @if (d.status === 'offline') { — } @else { {{ d.value }}{{ d.unit }} }
+                  </td>
+                  <td class="px-3 py-2 text-right font-mono"
+                      [class.text-fault]="(deviation(d) ?? 0) > 3"
+                      [class.text-warn]="(deviation(d) ?? 0) > 1 && (deviation(d) ?? 0) <= 3"
+                      [class.text-mute]="(deviation(d) ?? 0) <= 1">
+                    @if (deviation(d) === null) { — } @else { {{ deviation(d)! > 0 ? '+' : '' }}{{ deviation(d) }} }
+                  </td>
+                  <td class="px-3 py-2 text-right text-mute">{{ d.lastSeen }}</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="5" class="px-3 py-8 text-center text-mute">
+                  No devices on this floor with that status.
+                </td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- alerts + detail -->
+    <aside class="mt-6 lg:mt-0">
+      @if (selected(); as d) {
+        <section class="mb-6 border border-line bg-panel">
+          <header class="flex items-start justify-between gap-2 border-b border-line px-4 py-3">
+            <div>
+              <h2 class="font-semibold text-ink">{{ d.label }}</h2>
+              <p class="text-xs text-mute">{{ kindLabel[d.kind] }} · {{ d.id }}</p>
+            </div>
+            <button type="button" (click)="selected.set(null)"
+                    class="text-sm text-mute hover:text-ink" aria-label="Close device detail">×</button>
+          </header>
+          <dl class="px-4 py-3 text-sm">
+            <div class="flex justify-between py-1">
+              <dt class="text-mute">Status</dt>
+              <dd class="flex items-center gap-2 text-ink"><app-status-dot [status]="d.status" />{{ statusLabel(d.status) }}</dd>
+            </div>
+            <div class="flex justify-between py-1">
+              <dt class="text-mute">Reading</dt>
+              <dd class="font-mono text-ink">@if (d.status === 'offline') { no data } @else { {{ d.value }}{{ d.unit }} }</dd>
+            </div>
+            @if (d.setpoint !== undefined) {
+              <div class="flex justify-between py-1">
+                <dt class="text-mute">Setpoint</dt>
+                <dd class="font-mono text-ink">{{ d.setpoint }}{{ d.unit }}</dd>
+              </div>
+            }
+            <div class="flex justify-between py-1">
+              <dt class="text-mute">Last seen</dt>
+              <dd class="text-ink">{{ d.lastSeen }}</dd>
+            </div>
+          </dl>
+        </section>
+      }
+
+      <section class="border border-line bg-panel">
+        <h2 class="border-b border-line px-4 py-3 text-sm font-semibold text-ink">
+          Alerts <span class="font-normal text-mute">this floor</span>
+        </h2>
+        @for (a of alerts(); track a.id) {
+          <article class="border-b border-line px-4 py-3 last:border-0" [class.opacity-55]="a.acknowledged">
+            <div class="flex items-center justify-between gap-2">
+              <span class="flex items-center gap-2 text-sm text-ink">
+                <app-status-dot [status]="a.severity === 'critical' ? 'fault' : 'warning'" />
+                {{ deviceOf(a.deviceId).label }}
+              </span>
+              <span class="font-mono text-xs text-mute">{{ a.raised }}</span>
+            </div>
+            <p class="mt-1.5 text-sm">{{ a.message }}</p>
+            @if (!a.acknowledged) {
+              <button type="button" (click)="acknowledge(a)"
+                      class="mt-2 border border-line px-2.5 py-1 text-xs text-ink transition-colors hover:border-ink">
+                Acknowledge
+              </button>
+            } @else {
+              <p class="mt-2 text-xs text-mute">Acknowledged</p>
+            }
+          </article>
+        } @empty {
+          <p class="px-4 py-8 text-center text-sm text-mute">Nothing raised on this floor.</p>
+        }
+      </section>
+
+      <section class="mt-6 border border-line bg-panel px-4 py-3">
+        <h2 class="text-sm font-semibold text-ink">Demand, last 24 hours</h2>
+        <app-demand class="mt-2 block" />
+        <p class="mt-1 text-xs text-mute">Peak 121 kW at 14:00 · estate total</p>
+      </section>
+    </aside>
+  </div>
+
+  <footer class="mt-12 border-t border-line">
+    <div class="mx-auto max-w-[86rem] px-4 py-6 text-sm text-mute sm:px-6">
+      Built as a portfolio demonstration by
+      <a href="https://ashishaggarwal168.com" class="text-body underline underline-offset-4 hover:text-ink">Ashish Aggarwal</a>.
+      Angular with standalone components and signals.
+    </div>
+  </footer>
+</div>
